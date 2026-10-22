@@ -1,0 +1,37 @@
+# Keyword sets used to filter platform streams before classification
+keywords:
+  - pothole
+  - "damaged road"
+  - "power outage"
+  - "no water"
+  - garbage
+  - sewage
+  - streetlight
+  - "meter fault"
+
+# Department handles used to catch tagged posts
+department_handles:
+  - "@PWD"
+  - "@ElectricityBoard"
+  - "@MunicipalCorp"
+
+x:
+  # X API v2 recent search: OR them into one query
+  query_extra: "(pothole OR \"damaged road\" OR garbage OR \"no water\") -is:retweet lang:en"
+  max_results: 100
+  poll_interval_sec: 300
+
+youtube:
+  search_queries:
+    - "pothole city"
+    - "garbage complaint"
+  max_results: 25
+  poll_interval_sec: 900
+
+rss:
+  feeds:
+    - name: "reddit-india"
+      url: "https://www.reddit.com/r/india/new/.rss"
+    - name: "reddit-bangalore"
+      url: "https://www.reddit.com/r/bangalore/new/.rss"
+  poll_interval_sec: 600
