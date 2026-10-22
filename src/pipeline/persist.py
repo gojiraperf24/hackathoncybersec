@@ -1,12 +1,14 @@
 from sqlalchemy.orm import Session
 from src.models import RawItem, SourceItemRow
 
-
 def upsert_item(session: Session, item: RawItem, media_refs: list[dict]) -> bool:
-    """Idempotent insert. Returns True if new, False if already present."""
     existing = session.get(SourceItemRow, item.item_id)
     if existing:
         return False
+    
+    # Get the link from the raw data we pass from the connector
+    post_link = item.raw.get("link", "") if item.raw else ""
+    
     row = SourceItemRow(
         item_id=item.item_id,
         platform=item.platform,
@@ -17,7 +19,8 @@ def upsert_item(session: Session, item: RawItem, media_refs: list[dict]) -> bool
         geo_hint=item.geo_hint,
         tagged_departments=item.tagged_departments,
         engagement=item.engagement,
-        media_refs=media_refs,
+        media_urls=item.media_urls, # This maps to the JSON column
+        link=post_link,              # This maps to the String column
         raw=item.raw,
     )
     session.add(row)

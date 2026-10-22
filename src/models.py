@@ -37,7 +37,10 @@ class SourceItemRow(Base):
     geo_hint = Column(JSON)
     tagged_departments = Column(JSON)
     engagement = Column(JSON)
-    media_refs = Column(JSON)   # list of {url, s3_key, phash}
+    
+    link = Column(String)         # <--- MUST BE HERE
+    media_urls = Column(JSON)     # <--- MUST BE HERE
+    
     raw = Column(JSON)
     ingested_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
