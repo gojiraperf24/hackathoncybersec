@@ -18,6 +18,7 @@ class RawItem(BaseModel):
     author_hash: str | None = None
     text: str = ""
     media_urls: list[str] = Field(default_factory=list)
+    media_refs: list[dict] = Field(default_factory=list)
     timestamp: datetime
     geo_hint: dict[str, Any] | None = None
     tagged_departments: list[str] = Field(default_factory=list)
