@@ -3,11 +3,11 @@ import uuid
 import yaml
 import structlog
 from src.config import settings
-from src.models import init_db
+from src.models import init_db, SourceItemRow
 from src.pipeline.dedupe import is_duplicate, identity_hash
 from src.pipeline.persist import upsert_item
 from src.pipeline.pii import redact
-from src.pipeline.media import download_image
+from src.pipeline.media import download_image, ensure_bucket, upload_to_s3
 from src.pipeline.scraper import scrape_reddit_post # <-- NEW IMPORT
 from src.connectors.youtube_connector import YouTubeConnector
 from src.connectors.rss_connector import RSSConnector
@@ -21,6 +21,7 @@ def load_config(path: str = "config/sources.yaml") -> dict:
 async def run_once():
     cfg = load_config()
     engine, Session = init_db(settings().database_url)
+    ensure_bucket()
 
     connectors = []
     for feed in cfg["rss"]["feeds"]:
@@ -36,6 +37,10 @@ async def run_once():
                     if is_duplicate(item, seen_hashes):
                         stats["dup"] += 1
                         continue
+                    if session.get(SourceItemRow, item.item_id) is not None:
+                        stats["dup"] += 1
+                        continue
+
                     item.identity_hash = identity_hash(item)
 
                     # STAGE 2 SCRAPING LOGIC HERE
@@ -53,21 +58,36 @@ async def run_once():
                             comments_text = "\n\n--- Comments ---\n" + "\n".join(scraped_data["comments"])
                             item.text += comments_text
                             stats["scraped"] += 1
+
                             
                         # Be nice to Reddit's servers so we don't get IP banned
-                        await asyncio.sleep(2) 
+                        await asyncio.sleep(2)
+
+                    #filter out Reddit's hotlink-blocking CDN
+                    item.media_urls = [
+                        u for u in item.media_urls if "external-preview.redd.it" not in u
+                    ]
 
                     # Redact PII after scraping (so we redact comments too)
                     item.text = redact(item.text)
 
                     # Media download (now it will download the full image!)
                     media_refs = []
-                    for url in item.media_urls[:3]: 
+                    for url in item.media_urls[:3]:
                         try:
                             blob, phash = await download_image(url)
-                            key = f"{item.platform}/{item.item_id}/{uuid.uuid4().hex}.jpg"
-                            # TODO: upload blob to S3
-                            media_refs.append({"url": url, "s3_key": key, "phash": phash})
+                            # Safe S3 key - identity_hash is always hex, always valid
+                            safe_id = item.identity_hash[:16]   # or item.item_id.replace(":", "_").replace("/", "_")
+                            key = f"{item.platform}/{safe_id}/{uuid.uuid4().hex}.jpg"
+                            if upload_to_s3(blob, key):
+                                media_refs.append({
+                                    "url": url,
+                                    "s3_key": key,
+                                    "phash": phash,
+                                    "bytes": len(blob),
+                                })
+                            # On upload failure, upload_to_s3 already logged;
+                            # don't append a ref pointing at a missing object.
                         except Exception as e:
                             log.warning("media_failed", url=url, error=str(e))
 
