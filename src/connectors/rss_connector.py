@@ -24,12 +24,26 @@ class RSSConnector(BaseConnector):
             title = entry.get("title", "")
             summary = entry.get("summary", "") or entry.get("description", "")
             
-            # Check if RSS says there's an image (even a thumbnail)
-            has_image = '<img' in summary or hasattr(entry, 'media_thumbnail')
+            # 1. Extract the image URL from the RSS summary HTML
+            image_urls = []
+            img_match = re.search(r'<img[^>]+src="([^">]+)"', summary)
+            if img_match:
+                image_urls.append(img_match.group(1))
+                
+            if hasattr(entry, 'media_thumbnail'):
+                for thumb in entry.media_thumbnail:
+                    if thumb['url'] not in image_urls:
+                        image_urls.append(thumb['url'])
+
+            has_image = len(image_urls) > 0
             
-            # Filter: Skip if no image AND title is too short (< 30 words)
-            word_count = len(title.split()) + len(summary.split())
-            if not has_image and word_count < 30:
+            # 2. FILTER LOGIC: Count words ONLY in the body/summary, not the title
+            # We strip out HTML tags first so we are counting actual words
+            clean_summary = re.sub(r'<[^>]+>', ' ', summary)
+            body_word_count = len(clean_summary.split())
+            
+            # Skip if no image AND body is shorter than 30 words
+            if not has_image and body_word_count < 30:
                 continue 
 
             # Parse timestamp
@@ -39,7 +53,6 @@ class RSSConnector(BaseConnector):
                 if ts else datetime.now(timezone.utc)
             )
 
-            # We pass the link in the raw data so Stage 2 can use it
             post_link = entry.get("link", "")
 
             yield RawItem(
@@ -49,8 +62,8 @@ class RSSConnector(BaseConnector):
                 author_hash=hashlib.sha256(
                     (entry.get("author", "") + self.feed_name).encode()
                 ).hexdigest()[:16],
-                text=title + "\n" + summary,
-                media_urls=[], # Leave empty! Stage 2 will fill this
+                text=title + "\n\n" + summary, # I added double newline for better spacing
+                media_urls=image_urls, 
                 timestamp=timestamp,
                 geo_hint=None,
                 tagged_departments=[],
