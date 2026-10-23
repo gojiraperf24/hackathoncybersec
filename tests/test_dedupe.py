@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from src.models import RawItem
-from src.pipeline.dedupe import is_duplicate, content_hash
+from src.pipeline.dedupe import is_duplicate, identity_hash
 
 
 def _mk(native_id="1", text="pothole on MG Road"):
@@ -23,4 +23,4 @@ def test_different_native_id_not_duplicate():
 
 
 def test_hash_stable():
-    assert content_hash(_mk()) == content_hash(_mk())
+    assert identity_hash(_mk()) == identity_hash(_mk())

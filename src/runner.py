@@ -4,7 +4,7 @@ import yaml
 import structlog
 from src.config import settings
 from src.models import init_db
-from src.pipeline.dedupe import is_duplicate
+from src.pipeline.dedupe import is_duplicate, identity_hash
 from src.pipeline.persist import upsert_item
 from src.pipeline.pii import redact
 from src.pipeline.media import download_image
@@ -36,6 +36,7 @@ async def run_once():
                     if is_duplicate(item, seen_hashes):
                         stats["dup"] += 1
                         continue
+                    item.identity_hash = identity_hash(item)
 
                     # STAGE 2 SCRAPING LOGIC HERE
                     post_link = item.raw.get("link", "") if item.raw else ""
@@ -73,6 +74,8 @@ async def run_once():
                     if upsert_item(session, item, media_refs):
                         stats["new"] += 1
                         log.info("ingested", platform=item.platform, item_id=item.item_id)
+                    else:
+                        stats["dup"] += 1
             except Exception as e:
                 stats["error"] += 1
                 log.error("connector_failed", connector=conn.name, error=str(e))
