@@ -602,7 +602,7 @@ Guidelines
 
 \- \[x] PostgreSQL persistence
 
-\- \[ ] Persistent dedupe (unique index + `IntegrityError` handling)
+\- \[X] Persistent dedupe (unique index + `IntegrityError` handling)
 
 \- \[ ] YouTube connector with pagination
 
