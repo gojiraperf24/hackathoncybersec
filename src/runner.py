@@ -8,9 +8,9 @@ from src.stages.enrich_reddit import EnrichRedditStage
 from src.pipeline.dedupe import is_duplicate, identity_hash
 from src.stages.base import StageContext
 from src.stages.persist import PersistStage
-from src.pipeline.pii import redact
 from src.pipeline.media import download_image, ensure_bucket, upload_to_s3
-from src.pipeline.scraper import scrape_reddit_post
+from src.stages.enrich_reddit import EnrichRedditStage
+from src.stages.redact_pii import RedactPiiStage
 from src.connectors.youtube_connector import YouTubeConnector
 from src.connectors.rss_connector import RSSConnector
 
@@ -37,6 +37,7 @@ async def run_once():
     with Session() as session:
         ctx = StageContext(session=session, stats=stats, settings=settings())
         enrich_reddit = EnrichRedditStage()
+        redact_pii = RedactPiiStage()
         persist_stage = PersistStage()
 
         for conn in connectors:
@@ -62,7 +63,7 @@ async def run_once():
                         ]
 
                         # Redact PII (extracted in Commit 4)
-                        item.text = redact(item.text)
+                        item = await redact_pii.process(item, ctx)
 
                         # Media download + upload (extracted in Commit 5)
                         media_refs = []
