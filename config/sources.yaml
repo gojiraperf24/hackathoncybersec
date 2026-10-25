@@ -21,12 +21,12 @@ x:
   max_results: 100
   poll_interval_sec: 300
 
-youtube:
-  search_queries:
-    - "pothole city"
-    - "garbage complaint"
-  max_results: 25
-  poll_interval_sec: 900
+# youtube:
+#   search_queries:
+#     - "pothole city"
+#     - "garbage complaint"
+#   max_results: 25
+#   poll_interval_sec: 900
 
 rss:
   feeds:
@@ -35,3 +35,8 @@ rss:
     - name: "reddit-bangalore"
       url: "https://www.reddit.com/r/bangalore/new/.rss"
   poll_interval_sec: 600
+
+youtube:
+  queries:
+    - "bihar traffic"
+    - "bihar pothole"

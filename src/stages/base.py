@@ -8,9 +8,14 @@ Stages are composed by the orchestrator in order.
 Rules for implementing a Stage:
   1. Idempotent-ish: re-running the same stage on the same item should not
      corrupt state. Network calls are fine; don't append to item.raw['history'].
-  2. Log, don't crash: catch exceptions inside process(); use ctx.logger.warning
-     and return the item unchanged so downstream stages still run.
-  3. Single responsibility: one stage does one thing.
+  2. Mutate in place: process() MUST return the same RawItem instance it
+     received, not a copy. The orchestrator relies on instance identity to
+     preserve fields it sets between stages (notably identity_hash and
+     media_refs). Returning a new instance silently loses those fields.
+  3. Log, don't crash: catch exceptions inside process(); use
+     ctx.logger.warning and return the item unchanged so downstream stages
+     still run.
+  4. Single responsibility: one stage does one thing.
 """
 from __future__ import annotations
 from abc import ABC, abstractmethod
@@ -52,7 +57,11 @@ class BaseStage(ABC):
     async def process(self, item: RawItem, ctx: StageContext) -> RawItem:
         """
         Input: one RawItem, possibly enriched by prior stages.
-        Output: the same RawItem, possibly further enriched.
+        Output: THE SAME RawItem instance, mutated in place.
+
+        Returning a new instance is forbidden — the orchestrator relies on
+        instance identity to preserve fields it sets between stages
+        (notably identity_hash and media_refs).
 
         May persist to the database via ctx.session.
         Must not raise on expected failures — log via ctx.logger and return

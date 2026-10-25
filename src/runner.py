@@ -4,13 +4,12 @@ import yaml
 import structlog
 from src.config import settings
 from src.models import init_db, SourceItemRow
-from src.stages.enrich_reddit import EnrichRedditStage
 from src.pipeline.dedupe import is_duplicate, identity_hash
 from src.stages.base import StageContext
-from src.stages.persist import PersistStage
-from src.pipeline.media import download_image, ensure_bucket, upload_to_s3
 from src.stages.enrich_reddit import EnrichRedditStage
 from src.stages.redact_pii import RedactPiiStage
+from src.stages.persist import PersistStage
+from src.pipeline.media import download_image, ensure_bucket, upload_to_s3
 from src.connectors.youtube_connector import YouTubeConnector
 from src.connectors.rss_connector import RSSConnector
 
@@ -31,11 +30,15 @@ async def run_once():
     for feed in cfg["rss"]["feeds"]:
         connectors.append(RSSConnector(feed_url=feed["url"], feed_name=feed["name"]))
 
+    yt_cfg = cfg.get("youtube", {})
+    for q in yt_cfg.get("queries", []):
+        connectors.append(YouTubeConnector(query=q))
+
     seen_hashes: set[str] = set()
     stats = {"new": 0, "dup": 0, "error": 0, "scraped": 0}
 
     with Session() as session:
-        ctx = StageContext(session=session, stats=stats, settings=settings())
+        ctx = StageContext(session=session, logger=log, stats=stats, settings=settings())
         enrich_reddit = EnrichRedditStage()
         redact_pii = RedactPiiStage()
         persist_stage = PersistStage()
@@ -51,21 +54,18 @@ async def run_once():
                             stats["dup"] += 1
                             continue
 
+                        # Stage 1: enrichment (mutates text, media_urls)
+                        await enrich_reddit.process(item, ctx)
+
+                        # Stage 2: PII redaction (mutates text)
+                        await redact_pii.process(item, ctx)
+
+                        # Pin identity AFTER all stages that might replace item,
+                        # immediately before persisting.  This survives the
+                        # `item = await stage.process(...)` reassignment pattern.
                         item.identity_hash = identity_hash(item)
 
-                        # STAGE 2 SCRAPING LOGIC (extracted in Commit 3)
-                        item = await enrich_reddit.process(item, ctx)
-
-                        # Filter Reddit's hotlink-blocking CDN
-                        item.media_urls = [
-                            u for u in item.media_urls
-                            if "external-preview.redd.it" not in u
-                        ]
-
-                        # Redact PII (extracted in Commit 4)
-                        item = await redact_pii.process(item, ctx)
-
-                        # Media download + upload (extracted in Commit 5)
+                        # Stage 3: media download + upload to MinIO
                         media_refs = []
                         for url in item.media_urls[:3]:
                             try:
@@ -83,6 +83,8 @@ async def run_once():
                                 log.warning("media_failed", url=url, error=str(e))
 
                         item.media_refs = media_refs
+
+                        # Stage 4: persist (unique constraint handles cross-run dup)
                         await persist_stage.process(item, ctx)
 
                     except Exception as e:
